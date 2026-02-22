@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>高強度專注訓練循環機</title>
+<style>
+  body { 
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+    display: flex; 
+    justify-content: center; 
+    align-items: center; 
+    height: 100vh; 
+    background-color: #f0f2f5; 
+    margin: 0; 
+  }
+  .timer-container { 
+    background: white; 
+    padding: 30px; 
+    border-radius: 20px; 
+    box-shadow: 0 10px 30px rgba(0,0,0,0.1); 
+    text-align: center; 
+    width: 320px; 
+  }
+  h2 { margin-top: 0; color: #333; }
+  .progress-bar-container { 
+    width: 100%; 
+    height: 15px; 
+    background-color: #e0e0e0; 
+    border-radius: 10px; 
+    overflow: hidden; 
+    margin-bottom: 20px; 
+  }
+  .progress-bar { 
+    height: 100%; 
+    background-color: #fbbc05; /* 類似影片中的黃色進度 */
+    width: 100%; 
+    transition: width 1s linear; 
+  }
+  .time-display { 
+    font-size: 4.5rem; 
+    font-weight: bold; 
+    color: #222;
+    margin: 10px 0; 
+    font-variant-numeric: tabular-nums; 
+  }
+  .status { 
+    font-size: 0.9rem; 
+    color: #666; 
+    min-height: 20px; 
+    margin-bottom: 20px;
+  }
+  .controls { 
+    display: flex; 
+    justify-content: space-between; 
+    margin-bottom: 20px; 
+  }
+  .input-group { 
+    display: flex; 
+    flex-direction: column; 
+    align-items: center; 
+    width: 48%;
+  }
+  .input-group label { font-size: 0.85rem; color: #555; margin-bottom: 5px; }
+  input { 
+    width: 100%; 
+    padding: 8px; 
+    text-align: center; 
+    font-size: 1.1rem; 
+    border: 1px solid #ccc; 
+    border-radius: 8px; 
+    box-sizing: border-box;
+  }
+  .buttons { 
+    display: grid; 
+    grid-template-columns: 1fr 1fr; 
+    gap: 10px; 
+  }
+  button { 
+    padding: 12px; 
+    font-size: 1rem; 
+    font-weight: bold;
+    cursor: pointer; 
+    border: none; 
+    border-radius: 8px; 
+    background-color: #4285f4; 
+    color: white; 
+    transition: background 0.2s; 
+  }
+  button:hover { background-color: #3367d6; }
+  button.stop-btn { background-color: #ea4335; grid-column: span 2; }
+  button.stop-btn:hover { background-color: #c5221f; }
+</style>
+</head>
+<body>
+
+<div class="timer-container">
+  <h2>專注循環機</h2>
+  
+  <div class="progress-bar-container">
+    <div class="progress-bar" id="progressBar"></div>
+  </div>
+  
+  <div class="time-display" id="timeDisplay">00:00</div>
+  <div class="status" id="statusDisplay">請設定時間或直接正計時</div>
+
+  <div class="controls">
+    <div class="input-group">
+      <label>設定時間 (分鐘)</label>
+      <input type="number" id="inputMinutes" value="3" min="1">
+    </div>
+    <div class="input-group">
+      <label>自動重複 (次數)</label>
+      <input type="number" id="inputRepeats" value="1" min="1">
+    </div>
+  </div>
+
+  <div class="buttons">
+    <button onclick="startCountdown()">啟動倒數</button>
+    <button onclick="startCountup()" style="background-color: #34a853;">直接正計時</button>
+    <button class="stop-btn" onclick="stopTimer()">停止 / 重設</button>
+  </div>
+</div>
+
+<script>
+  let timerInterval;
+  let timeRemaining = 0;
+  let totalTime = 0;
+  let currentRepeat = 1;
+  let totalRepeats = 1;
+  let mode = 'stopped'; // 'countdown', 'countup', 'stopped'
+
+  const timeDisplay = document.getElementById('timeDisplay');
+  const progressBar = document.getElementById('progressBar');
+  const statusDisplay = document.getElementById('statusDisplay');
+  const inputMinutes = document.getElementById('inputMinutes');
+  const inputRepeats = document.getElementById('inputRepeats');
+
+  // 格式化時間為 MM:SS
+  function formatTime(seconds) {
+    const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+    const s = (seconds % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
+  }
+
+  // 更新畫面顯示
+  function updateDisplay() {
+    timeDisplay.innerText = formatTime(timeRemaining);
+    
+    if (mode === 'countdown' && totalTime > 0) {
+      const percentage = (timeRemaining / totalTime) * 100;
+      progressBar.style.width = `${percentage}%`;
+    } else if (mode === 'countup' || mode === 'stopped') {
+      progressBar.style.width = '100%';
+    }
+  }
+
+  // 播放提示音
+  function playSound() {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      osc.connect(ctx.destination);
+      osc.frequency.value = 800; // 聲音頻率
+      osc.start();
+      setTimeout(() => osc.stop(), 300); // 逼聲持續 0.3 秒
+    } catch (e) {
+      console.log("瀏覽器不支援音效 API");
+    }
+  }
+
+  // 啟動倒數計時
+  function startCountdown() {
+    if (mode !== 'stopped') stopTimer(); // 先重設
+    
+    const mins = parseInt(inputMinutes.value) || 0;
+    totalTime = mins * 60;
+    timeRemaining = totalTime;
+    totalRepeats = parseInt(inputRepeats.value) || 1;
+    currentRepeat = 1;
+    
+    if (totalTime <= 0) {
+      alert("請設定大於0的時間！");
+      return;
+    }
+
+    mode = 'countdown';
+    statusDisplay.innerText = `倒數中 (循環: ${currentRepeat} / ${totalRepeats})`;
+    updateDisplay();
+
+    timerInterval = setInterval(() => {
+      timeRemaining--;
+      updateDisplay();
+
+      if (timeRemaining <= 0) {
+        playSound(); // 播放結束音效
+        if (currentRepeat < totalRepeats) {
+          // 進入下一次循環
+          currentRepeat++;
+          timeRemaining = totalTime;
+          statusDisplay.innerText = `倒數中 (循環: ${currentRepeat} / ${totalRepeats})`;
+          updateDisplay();
+        } else {
+          // 所有循環結束
+          clearInterval(timerInterval);
+          mode = 'stopped';
+          statusDisplay.innerText = "全部循環完成！";
+        }
+      }
+    }, 1000);
+  }
+
+  // 啟動正計時
+  function startCountup() {
+    if (mode !== 'stopped') stopTimer(); // 先重設
+    
+    mode = 'countup';
+    timeRemaining = 0;
+    statusDisplay.innerText = "正計時中...";
+    updateDisplay();
+
+    timerInterval = setInterval(() => {
+      timeRemaining++;
+      updateDisplay();
+    }, 1000);
+  }
+
+  // 停止並重設
+  function stopTimer() {
+    clearInterval(timerInterval);
+    mode = 'stopped';
+    timeRemaining = 0;
+    totalTime = 0;
+    statusDisplay.innerText = "已停止 / 等待設定";
+    updateDisplay();
+  }
+</script>
+</body>
+</html>
